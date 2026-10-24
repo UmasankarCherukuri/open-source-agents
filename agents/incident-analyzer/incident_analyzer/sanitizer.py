@@ -35,6 +35,11 @@ _PATTERNS: list[tuple[str, re.Pattern, str]] = [
         r"""(?i)(?:api[_-]?key|apikey|api[_-]?secret|secret[_-]?key)\s*[=:]\s*['"]?([a-zA-Z0-9_\-]{20,})['"]?"""
     ), r"<REDACTED_API_KEY>"),
 
+    # JWT Tokens (checked before generic auth headers for specific redaction)
+    ("JWT Token", re.compile(
+        r'eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+'
+    ), "<REDACTED_JWT>"),
+
     # Bearer/Authorization tokens
     ("Authorization Header", re.compile(
         r"""(?i)(?:bearer|token|authorization)\s*[=:]\s*['"]?([a-zA-Z0-9_\-\.]{20,})['"]?"""
@@ -79,11 +84,6 @@ _PATTERNS: list[tuple[str, re.Pattern, str]] = [
     ("IPv4 Address", re.compile(
         r'\b(?:\d{1,3}\.){3}\d{1,3}\b'
     ), "<REDACTED_IP>"),
-
-    # JWT Tokens
-    ("JWT Token", re.compile(
-        r'eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+'
-    ), "<REDACTED_JWT>"),
 
     # Generic high-entropy hex strings (32+ chars, often secrets)
     ("High-Entropy Hex String", re.compile(
