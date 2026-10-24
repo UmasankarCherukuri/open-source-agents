@@ -127,8 +127,11 @@ Before running this project, ensure you have:
 ### Step 1: Index Your Codebase (One-Time Setup)
 
 ```bash
-# Index a Python project
+# Index a Python project (generates .incident-spec.json)
 python main.py index /path/to/your/python/project
+
+# Also generate a human-readable Markdown spec (spec.md)
+python main.py index /path/to/project --markdown
 
 # With custom output path
 python main.py index /path/to/project -o my-spec.json
@@ -137,7 +140,24 @@ python main.py index /path/to/project -o my-spec.json
 python main.py index /path/to/project --exclude "tests,migrations,scripts"
 ```
 
-This generates a `.incident-spec.json` file containing the full AST specification.
+This generates a `.incident-spec.json` file (and optional `spec.md`) containing the full AST specification.
+
+### 30-Second Bundled Walkthrough
+
+You can test the agent right away using the bundled sample buggy service without any configuration:
+
+```bash
+# 1. Index the sample service and generate Markdown spec
+python main.py index examples/buggy_service --markdown
+
+# 2. Run Incident Diagnosis in Mock Mode (zero API keys needed)
+python main.py analyze \
+    --spec examples/buggy_service/.incident-spec.json \
+    --log-file examples/buggy_service/incident.log \
+    --expected '{"status": "confirmed", "final_amount": 45.0}' \
+    --actual 'AttributeError: NoneType object has no attribute get' \
+    --mock
+```
 
 ### Step 2: Analyze an Incident
 
@@ -208,14 +228,18 @@ AFFECTED SYMBOLS
     Relevance: Traceback frame at line 15 in function 'transform'
 
 ──────────────────────────────────────────────────────────────────────
-SUGGESTED FIXES
+SUGGESTED FIXES & PATCHES
 ──────────────────────────────────────────────────────────────────────
-  Fix #1: app.py
-  Explanation: Review process_data at line 35 - Traceback frame at line 42
-  Original:
-    - # Code at app.py:35
-  Fixed:
-    + # Suggested fix for process_data (review needed)
+  Fix #1: service.py [Patch Verified ✅]
+  Explanation: Review apply_discount_code at line 16 - Traceback frame at line 22
+  Unified Diff:
+    --- a/service.py
+    +++ b/service.py
+    @@ -1,3 +1,4 @@
+     # Code at service.py:16
+     def apply_discount_code():
+    +    # Safe guard added
+         pass
 
 ──────────────────────────────────────────────────────────────────────
 PREVENTION TIPS

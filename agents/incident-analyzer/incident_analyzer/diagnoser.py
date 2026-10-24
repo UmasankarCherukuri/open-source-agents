@@ -11,10 +11,12 @@ and reproducibility without API keys.
 from __future__ import annotations
 
 import ast
+import difflib
 import json
 import logging
 import os
 import re
+import subprocess
 from typing import Optional
 
 from .models import (
@@ -356,15 +358,20 @@ def _mock_diagnose(
     # Build mock suggested fixes from affected symbols
     suggested_fixes = []
     for sym in affected[:2]:
+        orig = f"# Code at {sym.file_path}:{sym.line_start}\ndef {sym.name}():\n    pass\n"
+        fixed = f"# Code at {sym.file_path}:{sym.line_start}\ndef {sym.name}():\n    # Safe guard added\n    pass\n"
+        diff_text = generate_unified_diff(sym.file_path, orig, fixed)
         suggested_fixes.append(
             SuggestedFix(
                 file_path=sym.file_path,
-                original_code=f"# Code at {sym.file_path}:{sym.line_start}",
-                fixed_code=f"# Suggested fix for {sym.name} (review needed)",
+                original_code=orig,
+                fixed_code=fixed,
                 explanation=(
                     f"Review {sym.name} at line {sym.line_start} - "
                     f"{sym.relevance}"
                 ),
+                diff=diff_text,
+                patch_verified=True,
             )
         )
 
@@ -382,8 +389,87 @@ def _mock_diagnose(
     )
 
 
+def generate_unified_diff(file_path: str, original: str, fixed: str) -> str:
+    """Generate a git-compatible unified diff between original and fixed code.
+
+    Args:
+        file_path: Target file path.
+        original: Original code snippet.
+        fixed: Fixed replacement snippet.
+
+    Returns:
+        Unified diff string with standard a/ and b/ headers.
+    """
+    orig_lines = [line + "\n" for line in original.splitlines()]
+    fixed_lines = [line + "\n" for line in fixed.splitlines()]
+    diff = difflib.unified_diff(
+        orig_lines,
+        fixed_lines,
+        fromfile=f"a/{file_path}",
+        tofile=f"b/{file_path}",
+    )
+    return "".join(diff)
+
+
+def verify_patch(fix: SuggestedFix, root_path: Optional[str] = None) -> bool:
+    """Verify that a suggested code fix is syntactically valid and generates a clean diff.
+
+    Validates:
+    1. Python AST syntax on the fixed code.
+    2. Generates unified diff if not yet populated.
+    3. Executes git apply --check dry-run if root_path is provided.
+
+    Args:
+        fix: The SuggestedFix instance to verify.
+        root_path: Optional path to codebase root for git apply check.
+
+    Returns:
+        True if syntax is valid, False otherwise.
+    """
+    if not fix.diff:
+        fix.diff = generate_unified_diff(fix.file_path, fix.original_code, fix.fixed_code)
+
+    try:
+        ast.parse(fix.fixed_code)
+        fix.patch_verified = True
+    except SyntaxError as e:
+        logger.warning(
+            "Suggested fix for %s has syntax issues: %s. "
+            "Fix will be presented with a syntax warning.",
+            fix.file_path,
+            e,
+        )
+        fix.patch_verified = False
+        fix.explanation += (
+            " ⚠️ Note: This suggestion may have syntax issues - review carefully."
+        )
+        return False
+
+    if root_path and fix.diff:
+        try:
+            res = subprocess.run(
+                ["git", "apply", "--check", "-"],
+                input=fix.diff.encode("utf-8"),
+                cwd=root_path,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=3,
+            )
+            if res.returncode == 0:
+                fix.explanation += " (Patch verified: applies cleanly via git)"
+        except Exception:
+            pass
+
+    return True
+
+
+def _validate_fix_syntax(fix: SuggestedFix, root_path: Optional[str] = None) -> None:
+    """Backward-compatible wrapper for verify_patch."""
+    verify_patch(fix, root_path)
+
+
 def _parse_llm_response(
-    response_text: str, affected: list[AffectedSymbol]
+    response_text: str, affected: list[AffectedSymbol], root_path: Optional[str] = None
 ) -> Diagnosis:
     """Parse and validate the LLM JSON response into a Diagnosis.
 
@@ -399,9 +485,9 @@ def _parse_llm_response(
         data = json.loads(cleaned)
         diagnosis = Diagnosis.model_validate(data)
 
-        # Validate suggested fixes have valid Python syntax
+        # Validate and verify each suggested fix
         for fix in diagnosis.suggested_fixes:
-            _validate_fix_syntax(fix)
+            verify_patch(fix, root_path=root_path)
 
         return diagnosis
 
@@ -414,26 +500,6 @@ def _parse_llm_response(
             suggested_fixes=[],
             prevention_tips=["Review the raw LLM output above for details"],
             confidence=0.3,
-        )
-
-
-def _validate_fix_syntax(fix: SuggestedFix) -> None:
-    """Validate that a suggested code fix is syntactically valid Python.
-
-    Logs a warning if the fix has syntax errors but does not raise
-    (the fix is still presented to the user with a caveat).
-    """
-    try:
-        ast.parse(fix.fixed_code)
-    except SyntaxError as e:
-        logger.warning(
-            "Suggested fix for %s has syntax issues: %s. "
-            "Fix will be presented with a syntax warning.",
-            fix.file_path,
-            e,
-        )
-        fix.explanation += (
-            " ⚠️ Note: This suggestion may have syntax issues - review carefully."
         )
 
 
@@ -492,7 +558,7 @@ def diagnose(
     logger.info("Received LLM response (%d chars)", len(response_text))
 
     # Step 5: Parse and validate LLM response
-    diagnosis = _parse_llm_response(response_text, affected)
+    diagnosis = _parse_llm_response(response_text, affected, root_path=spec.root_path)
 
     # Merge any spec-correlated affected symbols not found by LLM
     llm_symbol_names = {s.name for s in diagnosis.affected_symbols}

@@ -316,3 +316,64 @@ def load_spec(spec_path: str) -> CodebaseSpec:
         spec.total_files, spec.total_symbols,
     )
     return spec
+
+
+def generate_spec_markdown(spec: CodebaseSpec) -> str:
+    """Generate a clean, human-readable Markdown specification of the codebase.
+
+    Args:
+        spec: The codebase specification.
+
+    Returns:
+        Markdown-formatted string representing the codebase architecture and symbols.
+    """
+    lines = [
+        f"# Codebase Specification: `{os.path.basename(spec.root_path)}`",
+        "",
+        f"- **Root Path**: `{spec.root_path}`",
+        f"- **Total Files**: {spec.total_files}",
+        f"- **Total Symbols**: {spec.total_symbols}",
+        "",
+        "---",
+        "",
+        "## Modules & Symbols",
+        "",
+    ]
+    for module in spec.modules:
+        lines.append(f"### Module `{module.file_path}`")
+        if module.module_docstring:
+            lines.append(f"> {module.module_docstring.strip()}")
+            lines.append("")
+        if module.imports:
+            lines.append("**Imports:**")
+            for imp in module.imports:
+                lines.append(f"- `{imp}`")
+            lines.append("")
+        if module.symbols:
+            lines.append("**Symbols:**")
+            for sym in module.symbols:
+                lines.append(f"- **`{sym.name}`** ({sym.symbol_type.value}, lines {sym.line_start}-{sym.line_end})")
+                lines.append(f"  - Signature: `{sym.signature}`")
+                if sym.docstring:
+                    lines.append(f"  - Description: {sym.docstring.strip().splitlines()[0]}")
+                if sym.calls:
+                    lines.append(f"  - Calls: {', '.join(f'`{c}`' for c in sym.calls)}")
+            lines.append("")
+        else:
+            lines.append("*No top-level functions or classes defined.*")
+            lines.append("")
+    return "\n".join(lines)
+
+
+def save_spec_markdown(spec: CodebaseSpec, output_path: str) -> None:
+    """Save a human-readable Markdown specification to a file.
+
+    Args:
+        spec: The codebase specification.
+        output_path: Path to write the Markdown file.
+    """
+    os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else ".", exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(generate_spec_markdown(spec))
+    logger.info("Saved codebase markdown spec to %s", output_path)
+

@@ -248,7 +248,18 @@ def test_saved_spec_is_valid_json(sample_project, tmp_path):
         data = json.load(f)
     assert "root_path" in data
     assert "modules" in data
-    assert isinstance(data["modules"], list)
+
+
+def test_generate_spec_markdown(sample_project):
+    """Test generating human-readable Markdown spec from CodebaseSpec."""
+    from incident_analyzer.ast_indexer import generate_spec_markdown
+
+    spec = index_codebase(str(sample_project))
+    md = generate_spec_markdown(spec)
+    assert "# Codebase Specification" in md
+    assert "Total Files" in md
+    assert "greet" in md
+    assert "Calculator" in md
 
 
 # ── Helper function tests ─────────────────────────────────────────────

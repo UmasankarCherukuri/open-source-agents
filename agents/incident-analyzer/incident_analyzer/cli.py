@@ -14,7 +14,7 @@ import logging
 import sys
 from pathlib import Path
 
-from .ast_indexer import index_codebase, load_spec, save_spec
+from .ast_indexer import index_codebase, load_spec, save_spec, save_spec_markdown
 from .diagnoser import diagnose
 from .models import Diagnosis, IncidentInput
 
@@ -78,17 +78,23 @@ def _format_diagnosis(diagnosis: Diagnosis) -> str:
     # Suggested fixes
     if diagnosis.suggested_fixes:
         lines.append("─" * 70)
-        lines.append("SUGGESTED FIXES")
+        lines.append("SUGGESTED FIXES & PATCHES")
         lines.append("─" * 70)
         for i, fix in enumerate(diagnosis.suggested_fixes, 1):
-            lines.append(f"  Fix #{i}: {fix.file_path}")
+            status = " [Patch Verified ✅]" if fix.patch_verified else ""
+            lines.append(f"  Fix #{i}: {fix.file_path}{status}")
             lines.append(f"  Explanation: {fix.explanation}")
-            lines.append(f"  Original:")
-            for code_line in fix.original_code.splitlines():
-                lines.append(f"    - {code_line}")
-            lines.append(f"  Fixed:")
-            for code_line in fix.fixed_code.splitlines():
-                lines.append(f"    + {code_line}")
+            if fix.diff:
+                lines.append("  Unified Diff:")
+                for dline in fix.diff.splitlines():
+                    lines.append(f"    {dline}")
+            else:
+                lines.append("  Original:")
+                for code_line in fix.original_code.splitlines():
+                    lines.append(f"    - {code_line}")
+                lines.append("  Fixed:")
+                for code_line in fix.fixed_code.splitlines():
+                    lines.append(f"    + {code_line}")
             lines.append("")
 
     # Prevention tips
@@ -117,6 +123,12 @@ def cmd_index(args: argparse.Namespace) -> int:
     save_spec(spec, output)
     print(f"\n✅ Indexed {spec.total_files} files with {spec.total_symbols} symbols")
     print(f"   Spec saved to: {output}")
+
+    if args.markdown:
+        md_output = args.markdown if args.markdown is not True else str(Path(root_path) / "spec.md")
+        save_spec_markdown(spec, md_output)
+        print(f"   Markdown spec saved to: {md_output}")
+
     return 0
 
 
@@ -217,6 +229,10 @@ def build_parser() -> argparse.ArgumentParser:
     index_parser.add_argument(
         "--exclude",
         help="Comma-separated list of directory names to exclude",
+    )
+    index_parser.add_argument(
+        "--markdown", nargs="?", const=True, default=False,
+        help="Also export a human-readable Markdown specification (e.g. spec.md)",
     )
 
     # ── analyze command ──

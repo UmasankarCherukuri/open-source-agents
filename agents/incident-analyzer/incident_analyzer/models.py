@@ -93,6 +93,8 @@ class SuggestedFix(BaseModel):
     original_code: str = Field(description="Original code snippet")
     fixed_code: str = Field(description="Suggested fixed code")
     explanation: str = Field(description="Why this fix resolves the issue")
+    diff: Optional[str] = Field(default=None, description="Unified diff representation of the patch")
+    patch_verified: Optional[bool] = Field(default=None, description="Whether the patch was verified via AST or git apply check")
 
 
 class Diagnosis(BaseModel):

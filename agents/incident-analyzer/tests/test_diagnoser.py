@@ -229,6 +229,18 @@ def test_validate_fix_syntax_invalid():
     assert "⚠️" in fix.explanation
 
 
+def test_generate_unified_diff():
+    """Test generating a git-compatible unified diff."""
+    from incident_analyzer.diagnoser import generate_unified_diff
+
+    orig = "def add(a, b):\n    return a + b\n"
+    fixed = "def add(a, b):\n    # add docstring\n    return a + b\n"
+    diff = generate_unified_diff("math.py", orig, fixed)
+    assert "--- a/math.py" in diff
+    assert "+++ b/math.py" in diff
+    assert "+    # add docstring" in diff
+
+
 # ── _build_context_for_llm tests ──────────────────────────────────────
 
 
