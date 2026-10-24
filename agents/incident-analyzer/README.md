@@ -23,9 +23,9 @@
 
 ## Technical Stack
 
-- **Language & Runtime**: Python 3.11+
+- **Language & Runtime**: Python 3.9+
 - **Agent Framework / Core Library**: Vanilla Python with `ast` module for static analysis
-- **Models**: Google Gemini 2.5 Flash (via `google-genai` SDK) / Mock provider for offline use
+- **Models**: Google Gemma (open-weights) / Gemini 2.5 Flash (via `google-genai` SDK) / Mock provider for offline use
 - **Key Libraries**: Pydantic v2 (structured schemas), argparse (CLI), pytest (testing)
 
 ---
@@ -82,9 +82,9 @@
 ## Prerequisites
 
 Before running this project, ensure you have:
-- **Python 3.11+**
-- **pip** (or **uv**) package manager
-- **Google Gemini API key** (only for live mode; not required for `--mock` mode or tests)
+- **Python 3.9+**
+- **pip** package manager
+- **Google Gemini / Gemma API key** (only for live API mode; not required for `--mock` mode or automated tests)
 
 ---
 
@@ -195,14 +195,18 @@ python main.py analyze --spec .incident-spec.json --log-file error.log --mock \
 
 ## Example Input & Output
 
-### Example Input
+### Example Input (`incident.log` with sensitive token)
 ```
+2026-10-24 12:00:01 [DEBUG] Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c3JfNDkyMCJ9.abcdef1234567890
+2026-10-24 12:00:02 [ERROR] Unhandled exception occurred during order checkout
 Traceback (most recent call last):
-  File "app.py", line 42, in process_data
-    result = transform(data)
-  File "utils.py", line 15, in transform
-    return data.split(",")
-AttributeError: 'NoneType' object has no attribute 'split'
+  File "examples/buggy_service/service.py", line 44, in <module>
+    process_order(sample_order)
+  File "examples/buggy_service/service.py", line 32, in process_order
+    final_amount = apply_discount_code(subtotal, discount)
+  File "examples/buggy_service/service.py", line 22, in apply_discount_code
+    rate = discount.get("rate", 0.0)
+AttributeError: 'NoneType' object has no attribute 'get'
 ```
 
 ### Example Output (Mock Mode)
@@ -222,15 +226,26 @@ ROOT CAUSE
 ──────────────────────────────────────────────────────────────────────
 AFFECTED SYMBOLS
 ──────────────────────────────────────────────────────────────────────
-  • process_data @ app.py:35-50
-    Relevance: Traceback frame at line 42 in function 'process_data'
-  • transform @ utils.py:10-20
-    Relevance: Traceback frame at line 15 in function 'transform'
+  • process_order @ service.py:27-38
+    Relevance: Traceback frame at line 32 in function 'process_order'
+  • apply_discount_code @ service.py:16-24
+    Relevance: Traceback frame at line 22 in function 'apply_discount_code'
 
 ──────────────────────────────────────────────────────────────────────
 SUGGESTED FIXES & PATCHES
 ──────────────────────────────────────────────────────────────────────
   Fix #1: service.py [Patch Verified ✅]
+  Explanation: Review process_order at line 27 - Traceback frame at line 32
+  Unified Diff:
+    --- a/service.py
+    +++ b/service.py
+    @@ -1,3 +1,4 @@
+     # Code at service.py:27
+     def process_order():
+    +    # Safe guard added
+         pass
+
+  Fix #2: service.py [Patch Verified ✅]
   Explanation: Review apply_discount_code at line 16 - Traceback frame at line 22
   Unified Diff:
     --- a/service.py
